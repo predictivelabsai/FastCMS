@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fasthtml-cms"
+version = "0.1.0"
+description = "A modern, lightweight CMS built with FastHTML and SQLite"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Predictive Labs Ltd", email = "info@predictivelabs.ai"},
+]
+keywords = ["cms", "fasthtml", "sqlite", "htmx", "content-management"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content :: Content Management System",
+]
+dependencies = [
+    "python-fasthtml>=0.12.0",
+    "fastlite>=0.1.0",
+    "python-multipart>=0.0.9",
+    "pillow>=10.0.0",
+    "python-dotenv>=1.0.0",
+    "bcrypt>=4.1.0",
+    "itsdangerous>=2.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/predictivelabs/FastHTML-CMS"
+Documentation = "https://github.com/predictivelabs/FastHTML-CMS#readme"
+Repository = "https://github.com/predictivelabs/FastHTML-CMS"
+Demo = "https://fastcms.predictivelabs.ai"
+
+[tool.setuptools.packages.find]
+include = ["app*", "admin*"]

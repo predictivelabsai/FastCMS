@@ -1,0 +1,7 @@
+python-fasthtml>=0.12.0
+fastlite>=0.1.0
+python-multipart>=0.0.9
+pillow>=10.0.0
+python-dotenv>=1.0.0
+bcrypt>=4.1.0
+itsdangerous>=2.1.0
