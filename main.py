@@ -18,8 +18,9 @@ from admin import ar as admin_router
 
 beforeware = Beforeware(
     auth_before,
-    skip=[r'/favicon\.ico', r'/static/.*', r'/media/.*', r'.*\.css', r'.*\.js',
-          r'/admin/login', r'/api/.*', r'^/$', r'^/[^a].*']
+    skip=[r'/favicon\.ico', r'/static/.*', r'/media/.*', r'/screenshots/.*',
+          r'.*\.css', r'.*\.js', r'.*\.png', r'.*\.gif', r'.*\.jpg',
+          r'/admin/login', r'/api/.*', r'^/$', r'^/help$', r'^/form-submit/.*']
 )
 
 app, rt = fast_app(
@@ -37,44 +38,42 @@ admin_router.to_app(app)
 # ── Auth routes ───────────────────────────────────────────────────────
 
 @rt('/admin/login')
-def get(): return login_page()
+def login_get(): return login_page()
 
 @rt('/admin/login', methods=['POST'])
-def post(email: str = '', password: str = '', sess=None):
+def login_post(email: str = '', password: str = '', sess=None):
     return login_submit(email, password, sess)
 
 @rt('/admin/logout')
-def get(sess): return logout(sess)
+def logout_get(sess): return logout(sess)
 
-# ── Media serving ─────────────────────────────────────────────────────
+# ── Static file serving ──────────────────────────────────────────────
 
 @rt('/media/{path:path}')
-async def get(path: str):
+async def serve_media(path: str):
     from starlette.responses import FileResponse
     file_path = f'media/{path}'
-    if not os.path.exists(file_path):
-        raise HTTPException(404)
+    if not os.path.exists(file_path): raise HTTPException(404)
     return FileResponse(file_path)
 
 @rt('/screenshots/{path:path}')
-async def get(path: str):
+async def serve_screenshots(path: str):
     from starlette.responses import FileResponse
     file_path = f'screenshots/{path}'
-    if not os.path.exists(file_path):
-        raise HTTPException(404)
+    if not os.path.exists(file_path): raise HTTPException(404)
     return FileResponse(file_path)
 
 # ── Block add (HTMX endpoint) ────────────────────────────────────────
 
 @rt('/admin/pages/block/add/')
-def get(field: str = 'body', type: str = 'paragraph', idx: int = 0):
+def block_add(field: str = 'body', type: str = 'paragraph', idx: int = 0):
     return block_add_html(field, type, idx)
 
 # ── Form submission ───────────────────────────────────────────────────
 
 @rt('/form-submit/{page_id:int}', methods=['POST'])
-async def post(page_id: int, req):
-    from app.forms import validate_submission, save_submission, render_form
+async def form_submit(page_id: int, req):
+    from app.forms import validate_submission, save_submission
     from app.db import pages
     import json
     form_data = dict(await req.form())
@@ -95,35 +94,35 @@ async def post(page_id: int, req):
 # ── JSON API ──────────────────────────────────────────────────────────
 
 @rt('/api/v1/pages/')
-def get(child_of: int = 0, type: str = '', search: str = '', fields: str = '',
-        order: str = '-first_published_at', limit: int = 20, offset: int = 0):
+def api_pages(child_of: int = 0, type: str = '', search: str = '', fields: str = '',
+              order: str = '-first_published_at', limit: int = 20, offset: int = 0):
     return api_module.api_pages_list(child_of, type, search, fields, order, limit, offset)
 
 @rt('/api/v1/pages/{page_id:int}/')
-def get(page_id: int): return api_module.api_page_detail(page_id)
+def api_page(page_id: int): return api_module.api_page_detail(page_id)
 
 @rt('/api/v1/images/')
-def get(collection: int = 0, tags: str = '', search: str = '', limit: int = 20, offset: int = 0):
+def api_images(collection: int = 0, tags: str = '', search: str = '', limit: int = 20, offset: int = 0):
     return api_module.api_images_list(collection, tags, search, limit, offset)
 
 @rt('/api/v1/images/{image_id:int}/')
-def get(image_id: int): return api_module.api_image_detail(image_id)
+def api_image(image_id: int): return api_module.api_image_detail(image_id)
 
 @rt('/api/v1/documents/')
-def get(collection: int = 0, search: str = '', limit: int = 20, offset: int = 0):
+def api_documents(collection: int = 0, search: str = '', limit: int = 20, offset: int = 0):
     return api_module.api_documents_list(collection, search, limit, offset)
 
 @rt('/api/v1/documents/{doc_id:int}/')
-def get(doc_id: int): return api_module.api_document_detail(doc_id)
+def api_document(doc_id: int): return api_module.api_document_detail(doc_id)
 
 @rt('/api/v1/search/')
-def get(query: str = '', type: str = '', limit: int = 20, offset: int = 0):
+def api_search(query: str = '', type: str = '', limit: int = 20, offset: int = 0):
     return api_module.api_search(query, type, limit, offset)
 
 # ── CSV export ────────────────────────────────────────────────────────
 
 @rt('/admin/form-submissions/{page_id:int}/csv/')
-def get(page_id: int, auth):
+def form_csv(page_id: int, auth):
     from app.forms import export_submissions_csv
     from starlette.responses import Response
     csv_data = export_submissions_csv(page_id)
@@ -133,11 +132,11 @@ def get(page_id: int, auth):
 # ── Help / User Guide ─────────────────────────────────────────────────
 
 @rt('/help')
-def get():
+def help_page():
     return _help_page()
 
 @rt('/admin/help')
-def get():
+def admin_help_page(auth):
     return _help_page()
 
 def _help_page():
@@ -207,9 +206,7 @@ def _help_page():
 
     content_sections = []
     for title, anchor, items in sections:
-        els = []
-        for text, img in items:
-            els.append(Li(NotStr(text), cls="mb-2 text-gray-700 leading-relaxed"))
+        els = [Li(NotStr(text), cls="mb-2 text-gray-700 leading-relaxed") for text, img in items]
         section_content = [
             H2(title, id=f"section-{anchor}", cls="text-2xl font-semibold mt-10 mb-4 text-gray-900"),
             Ul(*els, cls="list-disc ml-6 mb-4"),
@@ -268,7 +265,7 @@ def _help_page():
 # ── Homepage ──────────────────────────────────────────────────────────
 
 @rt('/')
-def get():
+def homepage():
     page = resolve_page_by_url('/')
     if page:
         return render_public_page(page)
@@ -277,7 +274,7 @@ def get():
 # ── Public page catch-all (MUST be last) ──────────────────────────────
 
 @rt('/{path:path}')
-def get(path: str):
+def serve_page(path: str):
     url_path = f'/{path}/'
     page = resolve_page_by_url(url_path)
     if not page:

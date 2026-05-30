@@ -2,7 +2,7 @@
 
 A complete guide to managing your website with FastHTML-CMS.
 
-![Admin Tour](../screenshots/admin-tour.gif)
+![Admin Tour](../static/screenshots/admin-tour.gif)
 
 ---
 
@@ -30,7 +30,7 @@ A complete guide to managing your website with FastHTML-CMS.
 
 Navigate to `/admin/login` and enter your email and password.
 
-![Login](../screenshots/01-login.png)
+![Login](../static/screenshots/01-login.png)
 
 After signing in you'll land on the admin dashboard.
 
@@ -46,7 +46,7 @@ After signing in you'll land on the admin dashboard.
 
 The dashboard gives you an overview of your site at a glance.
 
-![Dashboard](../screenshots/02-dashboard.png)
+![Dashboard](../static/screenshots/02-dashboard.png)
 
 ### What You'll See
 
@@ -63,7 +63,7 @@ The dashboard gives you an overview of your site at a glance.
 
 Click **Pages** in the sidebar to browse the page tree.
 
-![Page Explorer](../screenshots/03-page-explorer.png)
+![Page Explorer](../static/screenshots/03-page-explorer.png)
 
 The page explorer shows:
 - **Page title** with type icon — click to drill into child pages
@@ -103,7 +103,7 @@ Use the Move and Copy actions to reorganize your page tree. Moving a page update
 
 The page editor has three tabs:
 
-![Page Editor](../screenshots/05-page-editor.png)
+![Page Editor](../static/screenshots/05-page-editor.png)
 
 ### Content Tab
 
@@ -114,14 +114,14 @@ The page editor has three tabs:
 
 ### Promote Tab
 
-![Promote Tab](../screenshots/06-page-promote-tab.png)
+![Promote Tab](../static/screenshots/06-page-promote-tab.png)
 
 - **SEO Title** — Override the page title in search engine results
 - **Search Description** — Meta description shown in search results
 
 ### Settings Tab
 
-![Settings Tab](../screenshots/07-page-settings-tab.png)
+![Settings Tab](../static/screenshots/07-page-settings-tab.png)
 
 - **Go Live Date/Time** — Schedule when the page becomes live
 - **Expiry Date/Time** — Schedule when the page is automatically unpublished
@@ -163,7 +163,7 @@ The body of every page uses a **StreamField** — a flexible list of content blo
 
 Click **Images** in the sidebar to manage your media library.
 
-![Images](../screenshots/09-images.png)
+![Images](../static/screenshots/09-images.png)
 
 ### Uploading Images
 
@@ -195,7 +195,7 @@ JPEG, PNG, WebP, GIF, SVG (passthrough). Images are automatically resized for th
 
 Click **Documents** in the sidebar to manage file uploads.
 
-![Documents](../screenshots/10-documents.png)
+![Documents](../static/screenshots/10-documents.png)
 
 - Upload any file type (PDF, DOCX, XLSX, etc.)
 - Organize with tags and collections
@@ -208,7 +208,7 @@ Click **Documents** in the sidebar to manage file uploads.
 
 Snippets are reusable content fragments managed from the admin.
 
-![Snippets](../screenshots/11-snippets.png)
+![Snippets](../static/screenshots/11-snippets.png)
 
 ### Built-in Snippet Types
 
@@ -228,7 +228,7 @@ Click a snippet type to view, add, edit, or delete instances.
 
 Click **Users** in the sidebar to manage admin users (admin role required).
 
-![Users](../screenshots/12-users.png)
+![Users](../static/screenshots/12-users.png)
 
 ### Roles
 
@@ -251,7 +251,7 @@ Click **Users** in the sidebar to manage admin users (admin role required).
 
 Click **Settings** in the sidebar to configure site-wide options (admin role required).
 
-![Settings](../screenshots/13-settings.png)
+![Settings](../static/screenshots/13-settings.png)
 
 ### Setting Groups
 
@@ -269,7 +269,7 @@ Click **Settings** in the sidebar to configure site-wide options (admin role req
 
 Click **Reports** in the sidebar for site analytics and auditing.
 
-![Reports](../screenshots/14-reports.png)
+![Reports](../static/screenshots/14-reports.png)
 
 ### Available Reports
 
@@ -346,7 +346,7 @@ FastHTML-CMS provides a read-only JSON API for headless CMS usage.
 
 Every edit creates a revision. To view or restore previous versions:
 
-![Revisions](../screenshots/08-revisions.png)
+![Revisions](../static/screenshots/08-revisions.png)
 
 1. Open a page in the editor
 2. Click **View Revisions** from the action menu dropdown
