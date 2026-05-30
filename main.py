@@ -1,357 +1,319 @@
 from fasthtml.common import *
+from dotenv import load_dotenv
+import os
 
-SITE_NAME = "FastHTML-CMS"
-SITE_TAGLINE = "Modern content management, radically simplified."
-DEMO_URL = "https://fastcms.predictivelabs.ai"
-ABOUT_URL = "https://predictivelabs.ai"
-GITHUB_URL = "https://github.com/predictivelabs/FastHTML-CMS"
+load_dotenv()
 
-TAILWIND_CONFIG = """
-tailwind.config = {
-  theme: {
-    extend: {
-      colors: {
-        bg:     { DEFAULT: '#FAFAFA', elevated: '#FFFFFF', raised: '#F3F1F9' },
-        ink:    { DEFAULT: '#1E1B4B', muted: '#64748B', dim: '#94A3B8' },
-        line:   { DEFAULT: '#E2E8F0', bright: '#CBD5E1' },
-        accent: { DEFAULT: '#7C3AED', dim: '#EDE9FE', deep: '#2E1065', cyan: '#06B6D4' },
-      },
-      fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
-      },
-      letterSpacing: { tightest: '-0.04em', tighter: '-0.025em' },
-    },
-  },
-};
-"""
+from app.db import setup_fts
+from app.auth import auth_before, login_page, login_submit, logout
+from app.pages import resolve_page_by_url, check_scheduled_pages
+from app.components import render_public_page
+from app.blocks import block_add_html
+from app.search import search as fts_search
+from app import api as api_module
+from app import snippets as _snippets  # noqa: triggers registration
+from admin import ar as admin_router
+
+# ── App setup ─────────────────────────────────────────────────────────
+
+beforeware = Beforeware(
+    auth_before,
+    skip=[r'/favicon\.ico', r'/static/.*', r'/media/.*', r'.*\.css', r'.*\.js',
+          r'/admin/login', r'/api/.*', r'^/$', r'^/[^a].*']
+)
 
 app, rt = fast_app(
     live=False,
     pico=False,
-    static_path="static",
-    hdrs=(
-        Meta(name='viewport', content='width=device-width, initial-scale=1'),
-        Meta(name='description', content=f'{SITE_NAME} — {SITE_TAGLINE}'),
-    ),
+    static_path='static',
+    before=beforeware,
+    secret_key=os.getenv('SECRET_KEY', 'change-me-in-production'),
+    hdrs=(Meta(name='viewport', content='width=device-width, initial-scale=1'),),
 )
 
+setup_fts()
+admin_router.to_app(app)
 
-# -- Shared components --
+# ── Auth routes ───────────────────────────────────────────────────────
 
-def Eyebrow(text, *, cls=""):
-    return Span(text, cls=f"font-mono text-[11px] tracking-[0.18em] uppercase text-accent {cls}".strip())
+@rt('/admin/login')
+def get(): return login_page()
 
-def Heading(level, text, *, cls=""):
-    tag = {1: H1, 2: H2, 3: H3, 4: H4}[level]
-    base = {
-        1: "text-4xl sm:text-5xl md:text-7xl font-medium tracking-tightest text-ink leading-[1.05] md:leading-[1.02]",
-        2: "text-2xl sm:text-3xl md:text-5xl font-medium tracking-tighter text-ink leading-[1.12] md:leading-[1.08]",
-        3: "text-lg sm:text-xl md:text-2xl font-medium tracking-tight text-ink",
-        4: "text-base md:text-lg font-medium text-ink",
-    }[level]
-    return tag(text, cls=f"{base} {cls}".strip())
+@rt('/admin/login', methods=['POST'])
+def post(email: str = '', password: str = '', sess=None):
+    return login_submit(email, password, sess)
 
-def Btn(text, *, href="#", primary=True, cls=""):
-    base = "inline-flex items-center gap-2 px-5 py-3 rounded-full text-sm font-medium transition-all duration-200"
-    if primary:
-        style = "bg-accent text-white hover:bg-accent-deep shadow-[0_0_0_1px_#7C3AED] hover:shadow-[0_0_0_1px_#2E1065]"
-    else:
-        style = "bg-transparent text-ink border border-line-bright hover:border-accent hover:text-accent"
-    return A(text, Span("→", cls="text-base"), href=href, cls=f"{base} {style} {cls}".strip())
+@rt('/admin/logout')
+def get(sess): return logout(sess)
 
-def Section_(*content, cls="", **kw):
-    return Section(Div(*content, cls="max-w-7xl mx-auto px-5 md:px-6"), cls=f"py-14 md:py-20 lg:py-24 {cls}".strip(), **kw)
+# ── Media serving ─────────────────────────────────────────────────────
 
-def _page(title, *content):
+@rt('/media/{path:path}')
+async def get(path: str):
+    from starlette.responses import FileResponse
+    file_path = f'media/{path}'
+    if not os.path.exists(file_path):
+        raise HTTPException(404)
+    return FileResponse(file_path)
+
+@rt('/screenshots/{path:path}')
+async def get(path: str):
+    from starlette.responses import FileResponse
+    file_path = f'screenshots/{path}'
+    if not os.path.exists(file_path):
+        raise HTTPException(404)
+    return FileResponse(file_path)
+
+# ── Block add (HTMX endpoint) ────────────────────────────────────────
+
+@rt('/admin/pages/block/add/')
+def get(field: str = 'body', type: str = 'paragraph', idx: int = 0):
+    return block_add_html(field, type, idx)
+
+# ── Form submission ───────────────────────────────────────────────────
+
+@rt('/form-submit/{page_id:int}', methods=['POST'])
+async def post(page_id: int, req):
+    from app.forms import validate_submission, save_submission, render_form
+    from app.db import pages
+    import json
+    form_data = dict(await req.form())
+    errors = validate_submission(page_id, form_data)
+    if errors:
+        p = pages[page_id]
+        return render_public_page(p)
+    save_submission(page_id, form_data, req.client.host if req.client else '')
+    p = pages[page_id]
+    extra = json.loads(p.extra_json) if p.extra_json else {}
+    thank_you = extra.get('thank_you_text', '<p>Thank you for your submission!</p>')
+    from app.components import public_page
+    return public_page(p.title,
+        H1(p.title, cls="text-4xl font-bold mb-6"),
+        Div(NotStr(thank_you), cls="prose"),
+    )
+
+# ── JSON API ──────────────────────────────────────────────────────────
+
+@rt('/api/v1/pages/')
+def get(child_of: int = 0, type: str = '', search: str = '', fields: str = '',
+        order: str = '-first_published_at', limit: int = 20, offset: int = 0):
+    return api_module.api_pages_list(child_of, type, search, fields, order, limit, offset)
+
+@rt('/api/v1/pages/{page_id:int}/')
+def get(page_id: int): return api_module.api_page_detail(page_id)
+
+@rt('/api/v1/images/')
+def get(collection: int = 0, tags: str = '', search: str = '', limit: int = 20, offset: int = 0):
+    return api_module.api_images_list(collection, tags, search, limit, offset)
+
+@rt('/api/v1/images/{image_id:int}/')
+def get(image_id: int): return api_module.api_image_detail(image_id)
+
+@rt('/api/v1/documents/')
+def get(collection: int = 0, search: str = '', limit: int = 20, offset: int = 0):
+    return api_module.api_documents_list(collection, search, limit, offset)
+
+@rt('/api/v1/documents/{doc_id:int}/')
+def get(doc_id: int): return api_module.api_document_detail(doc_id)
+
+@rt('/api/v1/search/')
+def get(query: str = '', type: str = '', limit: int = 20, offset: int = 0):
+    return api_module.api_search(query, type, limit, offset)
+
+# ── CSV export ────────────────────────────────────────────────────────
+
+@rt('/admin/form-submissions/{page_id:int}/csv/')
+def get(page_id: int, auth):
+    from app.forms import export_submissions_csv
+    from starlette.responses import Response
+    csv_data = export_submissions_csv(page_id)
+    return Response(csv_data, media_type='text/csv',
+                   headers={'Content-Disposition': f'attachment; filename=submissions-{page_id}.csv'})
+
+# ── Help / User Guide ─────────────────────────────────────────────────
+
+@rt('/help')
+def get():
+    return _help_page()
+
+@rt('/admin/help')
+def get():
+    return _help_page()
+
+def _help_page():
+    sections = [
+        ("Getting Started", "getting-started", [
+            ("Log in at <code>/admin/login</code> with your email and password.", None),
+            ("Edit the <strong>Home</strong> page from the Pages section.", None),
+            ("Upload images to the <strong>Media Library</strong>.", None),
+            ("Configure your site in <strong>Settings</strong>.", None),
+        ]),
+        ("Dashboard", "dashboard", [
+            ("The dashboard shows stats (pages, images, documents, users), recent edits, drafts awaiting review, and quick action buttons.", "screenshots/02-dashboard.png"),
+        ]),
+        ("Managing Pages", "pages", [
+            ("The <strong>Page Explorer</strong> shows your page tree. Click a page title to see its children, or click Edit to modify it.", "screenshots/03-page-explorer.png"),
+            ("Click <strong>+ PageType</strong> buttons to create new pages under the current parent.", None),
+            ("Pages can be <strong>Live</strong> (published), <strong>Draft</strong> (saved but not public), <strong>Scheduled</strong> (will go live at a set time), or <strong>Live + Draft</strong> (published with unpublished changes).", None),
+        ]),
+        ("Page Editor", "editor", [
+            ("The editor has three tabs: <strong>Content</strong> (title, slug, blocks), <strong>Promote</strong> (SEO), and <strong>Settings</strong> (scheduling, menu visibility).", "screenshots/05-page-editor.png"),
+            ("The <strong>slug</strong> auto-generates from the title. You can override it manually.", None),
+            ("Use the action menu (bottom-right) to Save Draft, Publish, Unpublish, Lock, View Revisions, or Delete.", None),
+        ]),
+        ("Content Blocks (StreamField)", "blocks", [
+            ("The page body uses composable content blocks. Click <strong>+ Add Block</strong> to insert a new block.", None),
+            ("<strong>Heading</strong> &mdash; H2/H3/H4 with text", None),
+            ("<strong>Paragraph</strong> &mdash; Rich text with formatting toolbar (bold, italic, links, lists)", None),
+            ("<strong>Image</strong> &mdash; Choose from media library with caption and alt text", None),
+            ("<strong>Embed</strong> &mdash; Paste a URL or embed HTML (YouTube, Vimeo, etc.)", None),
+            ("<strong>Quote</strong> &mdash; Blockquote with attribution", None),
+            ("<strong>Code</strong> &mdash; Code snippet with language selector", None),
+            ("<strong>List, Table, Document, Raw HTML</strong> &mdash; Additional block types", None),
+            ("Drag the <strong>&#x22EE;&#x22EE;</strong> handle to reorder blocks. Click <strong>&times;</strong> to remove.", None),
+        ]),
+        ("Images & Documents", "media", [
+            ("Upload images and documents from their respective sections in the sidebar.", "screenshots/09-images.png"),
+            ("Images are automatically resized into thumbnails. Set alt text and tags for organization.", None),
+            ("Use the <strong>Image Chooser</strong> modal (inside the page editor) to select or upload images inline.", None),
+        ]),
+        ("Snippets", "snippets", [
+            ("Snippets are reusable content fragments: NavigationMenu, FooterContent, SocialLink, Testimonial, FAQ.", "screenshots/11-snippets.png"),
+            ("Click a snippet type to create, edit, or delete instances.", None),
+        ]),
+        ("Users & Roles", "users", [
+            ("<strong>Admin</strong> &mdash; Full access: edit, publish, delete, manage users and settings.", None),
+            ("<strong>Editor</strong> &mdash; Edit and publish pages, upload media.", None),
+            ("<strong>Moderator</strong> &mdash; Edit pages and upload media, but cannot publish or delete.", None),
+        ]),
+        ("Site Settings", "settings", [
+            ("Configure site name, tagline, contact info, social media links, analytics, and custom CSS/JS.", "screenshots/13-settings.png"),
+        ]),
+        ("JSON API", "api", [
+            ("<code>GET /api/v1/pages/</code> &mdash; List published pages (filter: child_of, type, search, order, limit, offset)", None),
+            ("<code>GET /api/v1/pages/{id}/</code> &mdash; Single page with body blocks", None),
+            ("<code>GET /api/v1/images/</code> &mdash; List images with rendition URLs", None),
+            ("<code>GET /api/v1/documents/</code> &mdash; List documents", None),
+            ("<code>GET /api/v1/search/?query=term</code> &mdash; Full-text search", None),
+        ]),
+        ("Keyboard Shortcuts", "shortcuts", [
+            ("<code>Ctrl+S</code> / <code>Cmd+S</code> &mdash; Save draft in page editor", None),
+            ("<code>Escape</code> &mdash; Close modal dialogs", None),
+        ]),
+    ]
+
+    toc = Ul(*[Li(A(title, href=f"#section-{anchor}", cls="text-purple-600 hover:underline"), cls="mb-1")
+               for title, anchor, _ in sections], cls="mb-10 list-disc ml-6")
+
+    content_sections = []
+    for title, anchor, items in sections:
+        els = []
+        for text, img in items:
+            els.append(Li(NotStr(text), cls="mb-2 text-gray-700 leading-relaxed"))
+        section_content = [
+            H2(title, id=f"section-{anchor}", cls="text-2xl font-semibold mt-10 mb-4 text-gray-900"),
+            Ul(*els, cls="list-disc ml-6 mb-4"),
+        ]
+        if items and items[0][1]:
+            section_content.append(
+                Img(src=f"/{items[0][1]}", alt=title, cls="rounded-xl border border-gray-200 shadow-sm max-w-full mb-6")
+            )
+        content_sections.extend(section_content)
+
     return Html(
         Head(
-            Meta(charset="utf-8"),
-            Meta(name="viewport", content="width=device-width, initial-scale=1"),
-            Meta(name="description", content=f"{SITE_NAME} — {SITE_TAGLINE}"),
-            Title(f"{title} · {SITE_NAME}"),
-            Link(rel="preconnect", href="https://fonts.googleapis.com"),
-            Link(rel="preconnect", href="https://fonts.gstatic.com", crossorigin=""),
-            Link(rel="stylesheet",
-                 href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"),
-            Script(src="https://cdn.tailwindcss.com"),
-            Script(NotStr(TAILWIND_CONFIG)),
+            Meta(charset='utf-8'),
+            Meta(name='viewport', content='width=device-width, initial-scale=1'),
+            Title('User Guide — FastHTML-CMS'),
+            Link(rel='stylesheet', href='https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap'),
+            Script(src='https://cdn.tailwindcss.com'),
         ),
         Body(
-            _navbar(),
-            Main(*content, cls="min-h-screen"),
-            _footer(),
-            cls="bg-bg text-ink font-sans antialiased",
-        ),
-        lang="en",
-    )
-
-
-def _navbar():
-    return Nav(
-        Div(
-            A(
-                Span("◆", cls="text-accent mr-2"),
-                Span(SITE_NAME, cls="font-medium tracking-tight"),
-                href="/",
-                cls="flex items-center text-ink text-base hover:text-accent transition-colors",
-            ),
-            Div(
-                A("Features", href="#features", cls="text-sm text-ink-muted hover:text-ink transition-colors hidden lg:inline"),
-                A("About Us", href=ABOUT_URL, target="_blank", cls="text-sm text-ink-muted hover:text-ink transition-colors hidden lg:inline"),
-                cls="flex items-center gap-7",
-            ),
-            Div(
-                A("Demo", href=DEMO_URL, target="_blank",
-                  cls="hidden lg:inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium text-ink border border-line-bright hover:border-accent hover:text-accent transition-colors"),
-                A("Get Started", href="#get-started",
-                  cls="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium bg-accent text-white hover:bg-accent-deep transition-colors"),
-                cls="flex items-center gap-3",
-            ),
-            cls="max-w-7xl mx-auto px-5 md:px-6 flex items-center justify-between h-16 gap-4",
-        ),
-        cls="sticky top-0 z-50 backdrop-blur-md bg-bg/80 border-b border-line",
-    )
-
-
-def _footer():
-    return Footer(
-        Div(
-            Div(
+            Header(
                 Div(
-                    A(Span("◆", cls="text-accent mr-2"), Span(SITE_NAME, cls="font-medium text-ink"),
-                      href="/", cls="flex items-center text-lg mb-4"),
-                    P(SITE_TAGLINE, cls="text-ink-muted text-sm max-w-xs mb-5"),
-                    P("Open source CMS built with FastHTML and SQLite. No complexity, just content.",
-                      cls="text-ink-dim text-xs leading-relaxed max-w-xs"),
-                ),
-                Div(
-                    H4("Project", cls="text-xs font-mono tracking-[0.18em] uppercase text-ink-muted mb-5"),
-                    Ul(
-                        Li(A("Features", href="#features", cls="text-sm text-ink hover:text-accent"), cls="mb-2"),
-                        Li(A("Documentation", href="#get-started", cls="text-sm text-ink hover:text-accent"), cls="mb-2"),
-                        Li(A("GitHub", href=GITHUB_URL, target="_blank", cls="text-sm text-ink hover:text-accent"), cls="mb-2"),
+                    A(Span("◆", cls="text-purple-600 mr-2"), "FastHTML-CMS", href="/", cls="text-lg font-semibold text-gray-900"),
+                    Div(
+                        A("Home", href="/", cls="text-sm text-gray-500 hover:text-gray-900"),
+                        A("Admin", href="/admin/", cls="text-sm text-gray-500 hover:text-gray-900 ml-4"),
+                        cls="flex items-center"
                     ),
+                    cls="max-w-3xl mx-auto px-6 flex items-center justify-between h-16"
                 ),
+                cls="border-b border-gray-200"
+            ),
+            Main(
                 Div(
-                    H4("Company", cls="text-xs font-mono tracking-[0.18em] uppercase text-ink-muted mb-5"),
-                    Ul(
-                        Li(A("About Us", href=ABOUT_URL, target="_blank", cls="text-sm text-ink hover:text-accent"), cls="mb-2"),
-                        Li(A("Demo", href=DEMO_URL, target="_blank", cls="text-sm text-ink hover:text-accent"), cls="mb-2"),
-                        Li(A("Contact", href="mailto:info@predictivelabs.ai", cls="text-sm text-ink hover:text-accent"), cls="mb-2"),
-                    ),
+                    Img(src="/screenshots/admin-tour.gif", alt="FastHTML-CMS Admin Tour",
+                        cls="rounded-xl border border-gray-200 shadow-md mb-8 w-full"),
+                    cls="mb-2"
                 ),
+                H1("User Guide", cls="text-4xl font-bold mb-2 text-gray-900"),
+                P("Everything you need to know to manage your FastHTML-CMS website.", cls="text-lg text-gray-500 mb-8"),
+                Div(H3("Contents", cls="text-lg font-semibold mb-3"), toc, cls="bg-gray-50 rounded-xl p-6 mb-8 border border-gray-100"),
+                *content_sections,
                 Div(
-                    H4("Community", cls="text-xs font-mono tracking-[0.18em] uppercase text-ink-muted mb-5"),
-                    Ul(
-                        Li(A("GitHub", href=GITHUB_URL, target="_blank", cls="text-sm text-ink hover:text-accent"), cls="mb-2"),
-                        Li(A("FastHTML", href="https://fastht.ml", target="_blank", cls="text-sm text-ink hover:text-accent"), cls="mb-2"),
-                    ),
+                    H2("Need Help?", cls="text-2xl font-semibold mb-4"),
+                    P(A("GitHub", href="https://github.com/predictivelabs/FastHTML-CMS", cls="text-purple-600 hover:underline"),
+                      " · ",
+                      A("Predictive Labs", href="https://predictivelabs.ai", cls="text-purple-600 hover:underline"),
+                      cls="text-gray-600"),
+                    cls="mt-12 mb-8 pt-8 border-t border-gray-200"
                 ),
-                cls="grid grid-cols-2 md:grid-cols-4 gap-10",
+                cls="max-w-3xl mx-auto px-6 py-12"
             ),
-            Div(
-                Div("© 2025 FastHTML-CMS · ", A("Predictive Labs Ltd", href=ABOUT_URL, target="_blank", cls="text-accent hover:text-ink"), ".",
-                    cls="text-ink-dim text-xs"),
-                A("MIT License", href=GITHUB_URL, cls="text-ink-dim text-xs hover:text-accent"),
-                cls="mt-10 md:mt-14 pt-6 border-t border-line flex items-start md:items-center justify-between flex-wrap gap-4",
-            ),
-            cls="max-w-7xl mx-auto px-5 md:px-6",
+            cls="min-h-screen bg-white text-gray-900 font-[Inter] antialiased"
         ),
-        cls="py-12 md:py-16 border-t border-line bg-bg-elevated",
     )
 
+# ── Homepage ──────────────────────────────────────────────────────────
 
-def _stat(value, caption):
-    return Div(
-        Span(value, cls="text-2xl md:text-3xl font-medium tracking-tighter text-ink"),
-        P(caption, cls="text-ink-muted text-xs md:text-sm mt-1"),
-    )
+@rt('/')
+def get():
+    page = resolve_page_by_url('/')
+    if page:
+        return render_public_page(page)
+    return _landing_page()
 
+# ── Public page catch-all (MUST be last) ──────────────────────────────
 
-def _feature_card(icon, title, desc):
-    return Article(
-        Div(
-            Span(icon, cls="text-accent text-xl"),
-            cls="mb-4",
+@rt('/{path:path}')
+def get(path: str):
+    url_path = f'/{path}/'
+    page = resolve_page_by_url(url_path)
+    if not page:
+        raise HTTPException(404)
+    return render_public_page(page)
+
+# ── Fallback landing page ─────────────────────────────────────────────
+
+def _landing_page():
+    return Html(
+        Head(
+            Meta(charset='utf-8'),
+            Meta(name='viewport', content='width=device-width, initial-scale=1'),
+            Title('FastHTML-CMS'),
+            Script(src='https://cdn.tailwindcss.com'),
+            Link(rel='stylesheet', href='https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap'),
         ),
-        H4(title, cls="text-ink font-medium mb-1.5"),
-        P(desc, cls="text-ink-muted text-sm leading-relaxed"),
-        cls="p-6 rounded-2xl bg-bg-elevated border border-line hover:border-accent/50 transition-colors h-full",
-    )
-
-
-# -- Homepage --
-
-@rt("/")
-def index():
-    hero = Section(
-        Div(
-            Div(cls="absolute inset-0 bg-gradient-to-b from-accent-dim/40 via-transparent to-bg pointer-events-none"),
+        Body(
             Div(
-                Eyebrow("Open Source CMS"),
-                H1(
-                    Span("Create content that "),
-                    Span("flies", cls="text-accent"),
-                    Span("."),
-                    cls="mt-5 md:mt-6 text-[40px] sm:text-5xl md:text-7xl lg:text-[84px] font-medium tracking-tightest text-ink leading-[1.05] md:leading-[1.02] max-w-5xl",
-                ),
-                P("The modern Python CMS built on FastHTML and SQLite. Lightweight, fast, and enterprise-ready — with zero external dependencies.",
-                  cls="mt-6 md:mt-8 text-base md:text-xl text-ink-muted max-w-2xl leading-relaxed"),
                 Div(
-                    Btn("Try the Demo", href=DEMO_URL, primary=True),
-                    Btn("Get Started", href="#get-started", primary=False),
-                    cls="mt-8 md:mt-10 flex items-center gap-3 flex-wrap",
+                    Span("◆", cls="text-purple-600 text-3xl mr-3"),
+                    Span("FastHTML-CMS", cls="text-3xl font-bold"),
+                    cls="flex items-center justify-center mb-6"
                 ),
+                P("Your CMS is running. Set up your site:", cls="text-gray-500 text-center mb-8"),
                 Div(
-                    Span("$", cls="text-ink-dim mr-2"),
-                    Span("pip install fasthtml-cms", cls="text-accent-cyan"),
-                    cls="mt-8 inline-flex items-center px-5 py-3 rounded-xl bg-ink text-sm font-mono",
+                    A("Open Admin Panel →", href="/admin/",
+                      cls="px-6 py-3 bg-purple-600 text-white rounded-xl font-medium hover:bg-purple-700 transition-colors"),
+                    cls="text-center"
                 ),
-                cls="relative z-30 max-w-7xl mx-auto px-5 md:px-6 py-24 md:py-0",
+                Pre(Code("python setup.py  # if not done yet", cls="text-purple-400"),
+                    cls="mt-8 bg-gray-900 text-sm rounded-xl p-4 max-w-sm mx-auto"),
+                cls="max-w-md mx-auto p-12"
             ),
-            cls="relative min-h-[80vh] md:min-h-[86vh] flex items-center overflow-hidden bg-bg",
-        ),
-        Div(
-            Div(
-                _stat("0", "external services"),
-                _stat("1", "Python file to start"),
-                _stat("60s", "to first page"),
-                _stat("SQLite", "embedded database"),
-                cls="max-w-7xl mx-auto px-5 md:px-6 py-5 md:py-6 grid grid-cols-2 md:grid-cols-4 gap-6",
-            ),
-            cls="border-y border-line bg-bg-elevated/60",
+            cls="min-h-screen flex items-center justify-center bg-gray-50 font-[Inter]"
         ),
     )
-
-    tech_strip = Section_(
-        Div(
-            Eyebrow("Built on"),
-            Div(
-                *[Span(name, cls="font-mono text-[11px] tracking-widest uppercase text-ink-dim") for name in
-                  ["FastHTML", "SQLite", "HTMX", "Starlette", "Uvicorn", "Python", "Pillow"]],
-                cls="mt-4 flex flex-wrap gap-x-8 gap-y-2",
-            ),
-        ),
-        cls="border-b border-line",
-    )
-
-    features = Section_(
-        Div(
-            Eyebrow("Features"),
-            Heading(2, "Everything you need to manage content", cls="mt-3 max-w-3xl mb-2"),
-            P("Inspired by Wagtail, rebuilt for simplicity. All the power, none of the complexity.",
-              cls="mt-2 text-ink-muted text-base max-w-2xl leading-relaxed mb-10"),
-        ),
-        Div(
-            _feature_card("📄", "Page Tree", "Hierarchical page management with intuitive tree navigation, drag-and-drop reordering, and nested page types."),
-            _feature_card("✏️", "Rich Text Editor", "WYSIWYG editing with image embedding, links, and formatting — all server-rendered with HTMX."),
-            _feature_card("🧱", "Content Blocks", "StreamField-inspired composable blocks: text, image, embed, table, code, and custom blocks."),
-            _feature_card("🖼️", "Media Library", "Upload, organize, and reuse images and documents with collections, tagging, and focal points."),
-            _feature_card("🔍", "Full-Text Search", "SQLite FTS5 powered search across all content — pages, images, documents, and snippets."),
-            _feature_card("📋", "Draft & Publish", "Draft, review, schedule, and publish workflow with full revision history and diff comparison."),
-            _feature_card("👥", "User Roles", "Role-based access control: Admin, Editor, Moderator — with per-collection permissions."),
-            _feature_card("🔌", "JSON API", "Headless CMS capability with RESTful API endpoints for pages, images, and documents."),
-            _feature_card("💾", "Zero Config DB", "SQLite embedded storage. No PostgreSQL, no Redis, no Docker. Just Python and a file."),
-            cls="grid sm:grid-cols-2 lg:grid-cols-3 gap-4",
-        ),
-        cls="border-t border-line", id="features",
-    )
-
-    comparison = Section_(
-        Div(
-            Eyebrow("Why FastHTML-CMS"),
-            Heading(2, "Traditional CMS platforms carry decades of complexity", cls="mt-3 max-w-3xl mb-10"),
-        ),
-        Div(
-            Article(
-                P("Instead of", cls="text-[11px] font-mono tracking-widest uppercase text-ink-dim mb-3"),
-                P("Django + PostgreSQL", cls="text-xl font-medium tracking-tight text-ink mb-3"),
-                P("FastHTML + SQLite. Same power, 10x simpler to deploy. One file database, one process, zero config.",
-                  cls="text-ink-muted text-sm leading-relaxed"),
-                cls="p-7 rounded-2xl bg-bg-elevated border border-line",
-            ),
-            Article(
-                P("Instead of", cls="text-[11px] font-mono tracking-widest uppercase text-ink-dim mb-3"),
-                P("React admin panels", cls="text-xl font-medium tracking-tight text-ink mb-3"),
-                P("HTMX + Server rendering. No webpack, no node_modules, no build step. Fast, accessible, and progressively enhanced.",
-                  cls="text-ink-muted text-sm leading-relaxed"),
-                cls="p-7 rounded-2xl bg-bg-elevated border border-line",
-            ),
-            Article(
-                P("Instead of", cls="text-[11px] font-mono tracking-widest uppercase text-ink-dim mb-3"),
-                P("Complex ORM migrations", cls="text-xl font-medium tracking-tight text-ink mb-3"),
-                P("Fastlite with auto-transform. Add a field, restart, done. No migration files to manage.",
-                  cls="text-ink-muted text-sm leading-relaxed"),
-                cls="p-7 rounded-2xl bg-bg-elevated border border-line",
-            ),
-            cls="grid md:grid-cols-3 gap-4",
-        ),
-        cls="border-t border-line bg-bg-raised/40",
-    )
-
-    get_started = Section_(
-        Div(
-            Eyebrow("Quick Start"),
-            Heading(2, "Up and running in 60 seconds", cls="mt-3 max-w-3xl mb-2"),
-            P("No Docker, no PostgreSQL, no Redis. Just Python.",
-              cls="mt-2 text-ink-muted text-base max-w-2xl leading-relaxed mb-10"),
-        ),
-        Div(
-            Pre(
-                Code(
-                    "$ pip install fasthtml-cms\n"
-                    "$ fasthtml-cms init mysite\n"
-                    "$ cd mysite\n"
-                    "$ python setup.py\n"
-                    "$ python main.py\n"
-                    "\n"
-                    "  FastHTML-CMS running at http://localhost:5001\n"
-                    "  Admin panel at http://localhost:5001/admin/",
-                    cls="text-accent-cyan/90",
-                ),
-                cls="bg-ink rounded-2xl p-6 md:p-8 text-sm leading-relaxed overflow-x-auto font-mono",
-            ),
-            cls="max-w-2xl mb-10",
-        ),
-        Div(
-            Btn("Try the Demo", href=DEMO_URL, primary=True),
-            Btn("View on GitHub", href=GITHUB_URL, primary=False),
-            cls="flex items-center gap-3 flex-wrap",
-        ),
-        cls="border-t border-line", id="get-started",
-    )
-
-    cta = Section(
-        Div(
-            Div(
-                Eyebrow("Get Started", cls="text-accent-dim"),
-                Heading(2, "Ready to simplify your CMS?", cls="mt-3 max-w-3xl text-white"),
-                P("FastHTML-CMS is open source, free, and built for developers who value simplicity.",
-                  cls="mt-5 text-white/70 text-lg max-w-2xl leading-relaxed"),
-                Div(
-                    A("Get Started", Span("→", cls="text-base ml-1"), href="#get-started",
-                      cls="inline-flex items-center gap-1 px-5 py-3 rounded-full text-sm font-medium bg-white text-accent-deep hover:bg-accent-dim transition-all"),
-                    A("About Predictive Labs", Span("→", cls="text-base ml-1"), href=ABOUT_URL, target="_blank",
-                      cls="inline-flex items-center gap-1 px-5 py-3 rounded-full text-sm font-medium text-white/80 border border-white/30 hover:border-white hover:text-white transition-all"),
-                    cls="mt-8 flex items-center gap-3 flex-wrap",
-                ),
-                cls="max-w-7xl mx-auto px-5 md:px-6 py-20 md:py-28 relative z-10",
-            ),
-            Div(cls="absolute inset-0 bg-gradient-to-br from-accent/10 via-transparent to-transparent pointer-events-none"),
-            cls="relative overflow-hidden bg-accent-deep",
-        ),
-    )
-
-    return _page(
-        "Modern Content Management",
-        hero,
-        tech_strip,
-        features,
-        comparison,
-        get_started,
-        cta,
-    )
-
 
 serve()

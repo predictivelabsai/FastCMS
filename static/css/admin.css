@@ -1,0 +1,54 @@
+/* Admin-specific styles */
+
+/* Sidebar transitions */
+.sidebar-collapsed { width: 64px; }
+.sidebar-collapsed span:not(.icon) { display: none; }
+
+/* Trix editor overrides */
+trix-toolbar { border-radius: 0.5rem 0.5rem 0 0; border-color: #e5e7eb; }
+trix-editor { min-height: 200px; }
+trix-editor:focus { border-color: #7C3AED; box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.1); }
+
+/* Block editor */
+.drag-handle { cursor: grab; user-select: none; }
+.drag-handle:active { cursor: grabbing; }
+[data-block].sortable-ghost { opacity: 0.4; background: #EDE9FE; }
+[data-block].sortable-chosen { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+
+/* Toast animations */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; transform: translateY(-8px); }
+}
+.animate-fade-in { animation: fadeIn 0.3s ease-out; }
+.animate-fade-out { animation: fadeOut 0.3s ease-in forwards; }
+
+/* Action menu */
+.action-menu-dropdown { display: none; }
+.action-menu:hover .action-menu-dropdown { display: block; }
+
+/* Modal backdrop */
+.modal-backdrop { backdrop-filter: blur(2px); }
+
+/* Table hover */
+tbody tr:hover { background-color: #f9fafb; }
+
+/* Print styles */
+@media print {
+    nav, header, .action-menu, button, .no-print { display: none !important; }
+    main { margin: 0; padding: 0; }
+}
+
+/* Focus styles */
+input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: #7C3AED;
+    box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.1);
+}
+
+/* Page editor bottom bar spacing */
+form:has(.fixed.bottom-0) { padding-bottom: 4rem; }
