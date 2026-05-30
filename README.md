@@ -4,7 +4,7 @@ A modern, lightweight content management system built with [FastHTML](https://fa
 
 **Built by [Predictive Labs Ltd](https://predictivelabs.ai)** | [PyPI](https://pypi.org/project/fasthtml-cms/)
 
-![FastHTML-CMS](docs/fastcms.gif)
+![FastHTML-CMS Admin Tour](static/screenshots/admin-tour.gif)
 
 ## Features
 
