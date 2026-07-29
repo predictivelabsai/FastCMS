@@ -48,7 +48,7 @@ def landing_page():
                         Div(Button("Sign In or Register", type="button", onclick="authOpen('login')", cls="lp-primary"),
                             A("Explore the open-source suite →", href="https://fastsme.com/products", cls="lp-secondary"),
                             cls="lp-actions"), cls="lp-hero"),
-                Section(Div(Img(src="/static/product-demo.gif", alt="FastCMS product tour",
+                Section(Div(Img(src="/product-demo.gif", alt="FastCMS product tour",
                                 loading="eager", width="1854", height="909"),
                             P("Product tour · see the workspace in action"),
                             cls="lp-demo-frame"), cls="lp-demo", aria_label="FastCMS product tour"),
