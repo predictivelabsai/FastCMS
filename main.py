@@ -7,7 +7,7 @@ load_dotenv()
 from app.db import setup_fts
 from app.auth import auth_before, hash_password, login_page, login_submit, logout
 from app.landing import landing_page
-from app import google_auth
+from app import account_auth, google_auth
 from app.db import now, users
 from app.pages import resolve_page_by_url, check_scheduled_pages
 from app.components import render_public_page
@@ -23,7 +23,7 @@ beforeware = Beforeware(
     auth_before,
     skip=[r'/favicon\.ico', r'/static/.*', r'/media/.*', r'/screenshots/.*',
           r'.*\.css', r'.*\.js', r'.*\.png', r'.*\.gif', r'.*\.jpg',
-          r'/admin/login', r'/auth/google', r'/auth/google/callback',
+          r'/admin/login', r'/auth/google', r'/auth/google/callback', r'/auth/local/.*',
           r'/api/.*', r'^/$', r'^/help$', r'^/form-submit/.*']
 )
 
@@ -38,6 +38,29 @@ app, rt = fast_app(
 
 setup_fts()
 admin_router.to_app(app)
+
+
+def establish_local_user(sess, account):
+    matching = users(where='email=?', where_args=[account['email']])
+    if matching:
+        user = matching[0]
+    else:
+        user = users.insert(
+            email=account['email'],
+            name=account['name'],
+            password_hash=hash_password(os.urandom(32).hex()),
+            role='editor',
+            is_active=True,
+            created_at=now(),
+        )
+    if not user.is_active:
+        raise HTTPException(403, 'Account is disabled')
+    sess['user_id'] = user.id
+
+
+account_auth.register_fasthtml_routes(
+    rt, app_name="FastCMS", success_path="/admin/", on_login=establish_local_user
+)
 
 # ── Auth routes ───────────────────────────────────────────────────────
 
@@ -81,6 +104,7 @@ def google_callback(sess, request, code: str = '', state: str = '', error: str =
         matching = [user]
     if not matching or not matching[0].is_active:
         return RedirectResponse('/admin/login?error=Google+account+is+not+authorised', status_code=303)
+    account_auth.accounts.link_google(identity['email'], identity['name'])
     sess['user_id'] = matching[0].id
     return RedirectResponse('/admin/', status_code=303)
 
