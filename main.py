@@ -6,6 +6,9 @@ load_dotenv()
 
 from app.db import setup_fts
 from app.auth import auth_before, login_page, login_submit, logout
+from app.landing import landing_page
+from app import google_auth
+from app.db import users
 from app.pages import resolve_page_by_url, check_scheduled_pages
 from app.components import render_public_page
 from app.blocks import block_add_html
@@ -20,7 +23,8 @@ beforeware = Beforeware(
     auth_before,
     skip=[r'/favicon\.ico', r'/static/.*', r'/media/.*', r'/screenshots/.*',
           r'.*\.css', r'.*\.js', r'.*\.png', r'.*\.gif', r'.*\.jpg',
-          r'/admin/login', r'/api/.*', r'^/$', r'^/help$', r'^/form-submit/.*']
+          r'/admin/login', r'/auth/google', r'/auth/google/callback',
+          r'/api/.*', r'^/$', r'^/help$', r'^/form-submit/.*']
 )
 
 app, rt = fast_app(
@@ -46,6 +50,25 @@ def login_post(email: str = '', password: str = '', sess=None):
 
 @rt('/admin/logout')
 def logout_get(sess): return logout(sess)
+
+@rt('/auth/google')
+def google_start(sess, request):
+    if not google_auth.enabled():
+        return RedirectResponse('/admin/login?error=Google+sign-in+is+not+configured', status_code=303)
+    state = google_auth.new_state()
+    sess['google_oauth_state'] = state
+    return RedirectResponse(google_auth.authorize_url(request, state), status_code=303)
+
+@rt('/auth/google/callback')
+def google_callback(sess, request, code: str = '', state: str = '', error: str = ''):
+    if error or not code or state != sess.pop('google_oauth_state', None):
+        return RedirectResponse('/admin/login?error=Google+sign-in+failed', status_code=303)
+    identity = google_auth.exchange(request, code)
+    matching = users(where='email=?', where_args=[identity['email']]) if identity else []
+    if not matching or not matching[0].is_active:
+        return RedirectResponse('/admin/login?error=Google+account+is+not+authorised', status_code=303)
+    sess['user_id'] = matching[0].id
+    return RedirectResponse('/admin/', status_code=303)
 
 # ── Static file serving ──────────────────────────────────────────────
 
@@ -269,7 +292,7 @@ def homepage():
     page = resolve_page_by_url('/')
     if page:
         return render_public_page(page)
-    return _landing_page()
+    return landing_page()
 
 # ── Public page catch-all (MUST be last) ──────────────────────────────
 
