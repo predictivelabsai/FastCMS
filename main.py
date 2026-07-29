@@ -5,10 +5,10 @@ import os
 load_dotenv()
 
 from app.db import setup_fts
-from app.auth import auth_before, login_page, login_submit, logout
+from app.auth import auth_before, hash_password, login_page, login_submit, logout
 from app.landing import landing_page
 from app import google_auth
-from app.db import users
+from app.db import now, users
 from app.pages import resolve_page_by_url, check_scheduled_pages
 from app.components import render_public_page
 from app.blocks import block_add_html
@@ -65,6 +65,20 @@ def google_callback(sess, request, code: str = '', state: str = '', error: str =
         return RedirectResponse('/admin/login?error=Google+sign-in+failed', status_code=303)
     identity = google_auth.exchange(request, code)
     matching = users(where='email=?', where_args=[identity['email']]) if identity else []
+    allowlist_configured = bool(
+        os.getenv('GOOGLE_ALLOWED_DOMAINS', '').strip()
+        or os.getenv('GOOGLE_ALLOWED_EMAILS', '').strip()
+    )
+    if identity and not matching and allowlist_configured:
+        user = users.insert(
+            email=identity['email'],
+            name=identity['name'],
+            password_hash=hash_password(os.urandom(32).hex()),
+            role='admin',
+            is_active=True,
+            created_at=now(),
+        )
+        matching = [user]
     if not matching or not matching[0].is_active:
         return RedirectResponse('/admin/login?error=Google+account+is+not+authorised', status_code=303)
     sess['user_id'] = matching[0].id
