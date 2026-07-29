@@ -7,7 +7,9 @@ load_dotenv()
 from app.db import setup_fts
 from app.auth import auth_before, hash_password, login_page, login_submit, logout
 from app.landing import landing_page
+from app.developer import developer_page
 from app import account_auth, google_auth
+from app.fastapi_api import api
 from app.db import now, users
 from app.pages import resolve_page_by_url, check_scheduled_pages
 from app.components import render_public_page
@@ -24,7 +26,8 @@ beforeware = Beforeware(
     skip=[r'/favicon\.ico', r'/static/.*', r'/media/.*', r'/screenshots/.*',
           r'.*\.css', r'.*\.js', r'.*\.png', r'.*\.gif', r'.*\.jpg',
           r'/admin/login', r'/auth/google', r'/auth/google/callback', r'/auth/local/.*',
-          r'/api/.*', r'^/$', r'^/help$', r'^/form-submit/.*']
+          r'/api/.*', r'^/$', r'^/developers$', r'^/swagger\.json$',
+          r'^/help$', r'^/form-submit/.*']
 )
 
 app, rt = fast_app(
@@ -35,6 +38,17 @@ app, rt = fast_app(
     secret_key=os.getenv('SECRET_KEY', 'change-me-in-production'),
     hdrs=(Meta(name='viewport', content='width=device-width, initial-scale=1'),),
 )
+app.mount('/api', api)
+
+
+@rt('/swagger.json', methods=['GET'])
+def swagger_schema():
+    return JSONResponse(api.openapi())
+
+
+@rt('/developers', methods=['GET'])
+def developers():
+    return developer_page()
 
 setup_fts()
 admin_router.to_app(app)

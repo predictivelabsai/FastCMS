@@ -26,6 +26,7 @@ classifiers = [
     "Topic :: Internet :: WWW/HTTP :: Dynamic Content :: Content Management System",
 ]
 dependencies = [
+    "fastapi>=0.115",
     "python-fasthtml>=0.12.0",
     "fastlite>=0.1.0",
     "python-multipart>=0.0.9",

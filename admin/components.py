@@ -27,6 +27,7 @@ SIDEBAR_ITEMS = [
     ('reports', 'Reports', '/admin/reports/', '📈'),
     ('users', 'Users', '/admin/users/', '👥'),
     ('settings', 'Settings', '/admin/settings/', '⚙️'),
+    ('developers', 'Developers', '/developers', '⌘'),
 ]
 
 def admin_page(title, *content, auth=None, breadcrumbs=None, active='dashboard', body=None):
