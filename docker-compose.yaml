@@ -1,0 +1,52 @@
+# Local stack: FastCMS + PostgreSQL 16.
+#   cp .env.example .env   # adjust secrets
+#   docker compose up --build
+# Leave DATABASE_URL unset (and drop the db service) to run on SQLite instead.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-fastcms}
+      POSTGRES_USER: ${POSTGRES_USER:-fastcms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fastcms}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fastcms} -d ${POSTGRES_DB:-fastcms}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "5001:5001"
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://fastcms:fastcms@db:5432/fastcms}
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - FASTCMS_ADMIN_EMAIL=${FASTCMS_ADMIN_EMAIL:-}
+      - FASTCMS_ADMIN_PASSWORD=${FASTCMS_ADMIN_PASSWORD:-}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - FASTSME_API_TOKEN=${FASTSME_API_TOKEN:-}
+    volumes:
+      - media:/app/media
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/api/v1/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  media:

@@ -18,6 +18,15 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field, create_model
 from starlette.responses import JSONResponse
 
+from app.dbconn import connect, is_postgres, table_columns
+
+try:  # PostgreSQL driver errors, when psycopg is installed
+    import psycopg as _psycopg
+
+    _PG_ERRORS: tuple[type[Exception], ...] = (_psycopg.IntegrityError, _psycopg.OperationalError, _psycopg.DataError)
+except ImportError:  # pragma: no cover
+    _PG_ERRORS = ()
+
 
 class ErrorDetail(BaseModel):
     """Machine-readable API error."""
@@ -78,9 +87,9 @@ class SQLiteBackend:
             initialize()
 
     @contextmanager
-    def connection(self) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(self.path, timeout=15)
-        connection.row_factory = sqlite3.Row
+    def connection(self) -> Iterator[Any]:
+        # PostgreSQL when DATABASE_URL is set, otherwise the SQLite file.
+        connection = connect(self.path, timeout=15)
         try:
             yield connection
         finally:
@@ -88,15 +97,13 @@ class SQLiteBackend:
 
     def columns(self, resource: Resource) -> list[dict[str, Any]]:
         with self.connection() as connection:
-            rows = connection.execute(
-                f'PRAGMA table_info("{resource.table}")'
-            ).fetchall()
+            rows = table_columns(connection, resource.table)
         if not rows:
             raise RuntimeError(
                 f"API resource {resource.slug!r} references missing table "
                 f"{resource.table!r}"
             )
-        return [dict(row) for row in rows]
+        return rows
 
     def primary_key(self, resource: Resource) -> str:
         if resource.primary_key:
@@ -116,7 +123,8 @@ class SQLiteBackend:
         where = ""
         params: list[Any] = []
         if query and resource.search_fields:
-            clauses = [f'CAST("{field}" AS TEXT) LIKE ?' for field in resource.search_fields]
+            op = "ILIKE" if is_postgres() else "LIKE"
+            clauses = [f'CAST("{field}" AS TEXT) {op} ?' for field in resource.search_fields]
             where = " WHERE " + " OR ".join(clauses)
             params.extend([f"%{query}%"] * len(clauses))
         with self.connection() as connection:
@@ -175,7 +183,7 @@ class SQLiteBackend:
         return created or clean
 
 
-def _serialise_row(row: sqlite3.Row) -> dict[str, Any]:
+def _serialise_row(row: Any) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key in row.keys():
         value = row[key]
@@ -301,7 +309,7 @@ def create_sqlite_api(
         openapi_url="/openapi.json",
         servers=[{"url": f"{base_url.rstrip('/')}/api", "description": "Production"}],
         contact={"name": "FastSME", "url": "https://fastsme.com"},
-        license_info={"name": "MIT"},
+        license_info={"name": "Apache-2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0"},
     )
     api.add_middleware(
         CORSMiddleware,
@@ -396,7 +404,7 @@ def create_sqlite_api(
                         resource,
                         payload.model_dump(exclude_none=True),
                     )
-                except (sqlite3.IntegrityError, sqlite3.OperationalError, ValueError) as exc:
+                except (sqlite3.IntegrityError, sqlite3.OperationalError, *_PG_ERRORS, ValueError) as exc:
                     raise HTTPException(
                         status_code=422,
                         detail={

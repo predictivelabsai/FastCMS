@@ -913,7 +913,8 @@
     },
     "description": "Open integration access to FastCMS pages, media, documents, and form submissions.\n\n**Access model:** reads are public. Selected writes are implemented but disabled unless the deployment configures `FASTSME_API_TOKEN`; write clients then send it as a bearer token.",
     "license": {
-      "name": "MIT"
+      "name": "Apache-2.0",
+      "url": "https://www.apache.org/licenses/LICENSE-2.0"
     },
     "title": "FastCMS API",
     "version": "1.0.0"
