@@ -37,13 +37,41 @@ CSS = """
 .lp-card{background:rgba(255,255,255,.82);border:1px solid color-mix(in srgb,var(--accent) 15%,white);border-radius:20px;padding:26px} .lp-num{color:var(--accent);font-size:12px;font-weight:750} .lp-card h2{font-size:20px;margin:24px 0 8px} .lp-card p{color:var(--muted);line-height:1.6;margin:0}
 .lp-partners{max-width:1180px;margin:auto;padding:72px 24px;scroll-margin-top:80px} .lp-partners-head{max-width:720px} .lp-partners-head h2{font-size:32px;letter-spacing:-.03em;margin:10px 0 12px} .lp-partners-head p{color:var(--muted);line-height:1.65;margin:0}
 .lp-partner-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:32px} .lp-partner{min-width:0;color:var(--ink);text-decoration:none;border:1px solid var(--line);border-radius:18px;padding:20px;background:#fff;transition:transform .18s,border-color .18s,box-shadow .18s} .lp-partner:hover{transform:translateY(-3px);border-color:color-mix(in srgb,var(--accent) 40%,white);box-shadow:0 14px 34px rgba(17,24,39,.08)}
-.lp-partner-top{display:flex;align-items:center;justify-content:space-between;gap:12px} .lp-partner-logo{width:46px;height:46px;object-fit:contain} .lp-partner-type{color:var(--accent);font-size:10px;font-weight:750;text-transform:uppercase;letter-spacing:.1em;text-align:right} .lp-partner h3{font-size:18px;margin:18px 0 8px} .lp-partner p{color:var(--muted);font-size:13px;line-height:1.55;margin:0} .lp-partner-visit{display:block;color:var(--accent);font-size:12px;font-weight:700;margin-top:16px}
+.lp-partner-top{display:flex;align-items:center;justify-content:space-between;gap:12px} .lp-integration-grid{grid-template-columns:repeat(4,minmax(0,1fr))} .lp-integration-grid .lp-partner-top{justify-content:flex-start} .lp-integration-grid .lp-partner-type{text-align:left} .lp-partner-logo{width:46px;height:46px;object-fit:contain} .lp-partner-type{color:var(--accent);font-size:10px;font-weight:750;text-transform:uppercase;letter-spacing:.1em;text-align:right} .lp-partner h3{font-size:18px;margin:18px 0 8px} .lp-partner p{color:var(--muted);font-size:13px;line-height:1.55;margin:0} .lp-partner-visit{display:block;color:var(--accent);font-size:12px;font-weight:700;margin-top:16px}
 .lp-developers{max-width:1180px;margin:auto;padding:72px 24px;display:grid;grid-template-columns:1fr auto;align-items:center;gap:32px} .lp-developers h2{font-size:32px;letter-spacing:-.03em;margin:8px 0 12px} .lp-developers p{color:var(--muted);line-height:1.65;max-width:680px;margin:0}
 .lp-footer{max-width:1180px;margin:auto;padding:30px 24px 48px;color:var(--muted);font-size:13px;display:flex;justify-content:space-between;gap:20px}
 .lp-pricing{max-width:1180px;margin:auto;padding:72px 24px;scroll-margin-top:80px} .lp-pricing-head{max-width:720px} .lp-pricing-head h2{font-size:32px;letter-spacing:-.03em;margin:10px 0 12px} .lp-pricing-head p{color:var(--muted);line-height:1.65;margin:0} .lp-pricing-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:32px} .lp-pricing-card{border:1px solid var(--line);border-radius:18px;padding:26px;background:#fff} .lp-pricing-eyebrow{color:var(--accent);font-size:10px;font-weight:750;text-transform:uppercase;letter-spacing:.1em} .lp-pricing-card h3{font-size:22px;margin:14px 0 8px} .lp-pricing-price{font-size:36px;font-weight:750;letter-spacing:-.03em;margin:8px 0 12px;color:var(--ink)} .lp-pricing-card>p:last-child{color:var(--muted);line-height:1.6;margin:0}@media(max-width:760px){.lp-pricing-grid{grid-template-columns:1fr}}
-@media(max-width:980px){.lp-partner-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:760px){.lp-nav{height:60px}.lp-nav-actions{gap:10px}.lp-nav-actions .lp-nav-link:nth-child(2){display:none}.lp-nav-link{font-size:13px}.lp-hero{padding-top:72px}.lp-grid,.lp-partner-grid{grid-template-columns:1fr}.lp-developers{grid-template-columns:1fr}.lp-footer{flex-direction:column}}
+@media(max-width:980px){.lp-partner-grid,.lp-integration-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.lp-nav{height:60px}.lp-nav-actions{gap:10px}.lp-nav-actions .lp-nav-link:nth-child(2){display:none}.lp-nav-link{font-size:13px}.lp-hero{padding-top:72px}.lp-grid,.lp-partner-grid,.lp-integration-grid{grid-template-columns:1fr}.lp-developers{grid-template-columns:1fr}.lp-footer{flex-direction:column}}
 """
+
+
+INTEGRATIONS = (
+    ("Google sign-in", "Available", "Sign in with Google accounts, with optional domain and email allow-lists."),
+    ("VIISP", "In development", "Lithuanian e-government login: Smart-ID, Mobile-ID, bank links and eID card, via the VIISP authentication service."),
+    ("Microsoft Entra ID", "In development", "Single sign-on for Microsoft 365 organisations over OpenID Connect."),
+    ("LDAP / Active Directory", "In development", "Sign in with existing directory accounts and map directory groups to CMS roles."),
+)
+
+
+def integrations_section():
+    return Section(
+        Div(
+            Span("Integrations", cls="lp-kicker"),
+            H2("Sign in with the identity you already use."),
+            P("Google sign-in works today. Adapters for VIISP, Microsoft Entra ID and LDAP / Active Directory share one interface and are in development; they are off by default and switched on per deployment."),
+            cls="lp-partners-head",
+        ),
+        Div(*[
+            Article(
+                Div(Span(status, cls="lp-partner-type"), cls="lp-partner-top"),
+                H3(name), P(description),
+                cls="lp-partner",
+            )
+            for name, status, description in INTEGRATIONS
+        ], cls="lp-partner-grid lp-integration-grid"),
+        id="integrations", cls="lp-partners",
+    )
 
 
 def pricing_section():
@@ -106,7 +134,8 @@ def landing_page():
              Style(CSS + AUTH_CSS)),
         Body(
             Nav(A(Span("F", cls="lp-mark"), Span("FastCMS"), href="/", cls="lp-brand"),
-                Div(A("Pricing", href="#pricing", cls="lp-nav-link"),
+                Div(A("Integrations", href="#integrations", cls="lp-nav-link"),
+                    A("Pricing", href="#pricing", cls="lp-nav-link"),
                     A("Partners", href="#partners", cls="lp-nav-link"),
                     A("Developers", href="/developers", cls="lp-nav-link"),
                     Button("Sign In", type="button", onclick="authOpen('login')", cls="lp-signin"),
@@ -125,6 +154,7 @@ def landing_page():
                                       P("Everything you need for " + title.lower() + ", in one focused workspace."),
                                       cls="lp-card") for i, title in enumerate(features, 1)],
                             cls="lp-grid"), cls="lp-band"),
+                integrations_section(),
                 pricing_section(),
                 partner_section(),
                 Section(Div(Span("Developers", cls="lp-kicker"),

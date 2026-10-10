@@ -1,5 +1,6 @@
 import re
 from app.db import db, pages, images, documents
+from app.dbconn import is_postgres
 from app.blocks import extract_text_from_blocks
 
 def index_page(page):
@@ -35,6 +36,8 @@ def search(query, content_type=None, limit=20, offset=0):
     if not query: return []
     clean_q = re.sub(r'[^\w\s]', '', query).strip()
     if not clean_q: return []
+    if is_postgres():
+        return _search_pg(clean_q, content_type, limit, offset)
     fts_query = ' '.join(f'"{w}"*' for w in clean_q.split())
     where = ""
     args = [fts_query]
@@ -49,6 +52,27 @@ def search(query, content_type=None, limit=20, offset=0):
         args
     ).fetchall()
     return [{'title': r[0], 'body': r[1][:200], 'content_type': r[2],
+             'object_id': int(r[3]), 'rank': r[4]} for r in rows]
+
+def _search_pg(clean_q, content_type, limit, offset):
+    words = clean_q.split()
+    clauses, args = [], []
+    for w in words:
+        clauses.append("(title ILIKE ? OR body ILIKE ?)")
+        args += [f"%{w}%", f"%{w}%"]
+    where = " AND ".join(clauses)
+    if content_type:
+        where += " AND content_type=?"
+        args.append(content_type)
+    rank = " + ".join("(CASE WHEN title ILIKE ? THEN 0 ELSE 1 END)" for _ in words)
+    args += [f"%{w}%" for w in words] + [limit, offset]
+    rows = db.execute(
+        f"""SELECT title, body, content_type, object_id, ({rank}) AS rank
+            FROM search_index WHERE {where}
+            ORDER BY rank, title LIMIT ? OFFSET ?""",
+        args
+    ).fetchall()
+    return [{'title': r[0], 'body': (r[1] or '')[:200], 'content_type': r[2],
              'object_id': int(r[3]), 'rank': r[4]} for r in rows]
 
 def search_autocomplete(query, limit=5):

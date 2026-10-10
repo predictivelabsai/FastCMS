@@ -78,7 +78,7 @@ account_auth.register_fasthtml_routes(
 
 # ── Auth routes ───────────────────────────────────────────────────────
 
-@rt('/admin/login')
+@rt('/admin/login', methods=['GET'])
 def login_get(): return login_page()
 
 @rt('/admin/login', methods=['POST'])

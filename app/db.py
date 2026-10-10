@@ -1,10 +1,18 @@
-from fastlite import database
 from datetime import datetime, timezone
 import os, json, hashlib
 
+from app.dbconn import database_url, is_postgres
+
+# PostgreSQL when DATABASE_URL (or DB_URL) is set, otherwise the SQLite file.
+DATABASE_URL = database_url()
 DB_PATH = os.getenv('DATABASE_PATH', 'data/fasthtml-cms.db')
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-db = database(DB_PATH)
+if DATABASE_URL:
+    from app.dbconn import PGDatabase
+    db = PGDatabase(DATABASE_URL)
+else:
+    from fastlite import database
+    os.makedirs(os.path.dirname(DB_PATH) or '.', exist_ok=True)
+    db = database(DB_PATH)
 
 def now():
     return datetime.now(timezone.utc).isoformat()
@@ -162,6 +170,12 @@ audit_logs = db.create(AuditLog, transform=True)
 # ── FTS5 ──────────────────────────────────────────────────────────────
 
 def setup_fts():
+    if is_postgres():
+        # Plain table + ILIKE search on PostgreSQL (see app/search.py).
+        db.execute("""CREATE TABLE IF NOT EXISTS search_index
+                      (title TEXT, body TEXT, content_type TEXT, object_id TEXT)""")
+        db.execute("CREATE INDEX IF NOT EXISTS search_index_obj ON search_index (content_type, object_id)")
+        return
     db.execute("""CREATE VIRTUAL TABLE IF NOT EXISTS search_index
                   USING fts5(title, body, content_type, object_id UNINDEXED,
                   tokenize='porter unicode61')""")

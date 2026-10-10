@@ -18,6 +18,8 @@ from urllib.request import Request as UrlRequest, urlopen
 from fasthtml.common import *
 from starlette.responses import JSONResponse, RedirectResponse
 
+from app.dbconn import connect
+
 AUTH_CSS = """
 .auth-overlay{position:fixed;inset:0;z-index:1000;background:rgba(17,24,39,.46);display:none;align-items:center;justify-content:center;padding:20px}
 .auth-overlay.visible{display:flex}.auth-dialog{width:min(400px,100%);max-height:calc(100vh - 40px);overflow:auto;background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:24px;box-shadow:0 24px 70px rgba(15,23,42,.22);position:relative}
@@ -117,8 +119,7 @@ class AccountStore:
         self._setup()
 
     def _db(self):
-        db = sqlite3.connect(self.path, timeout=10)
-        db.row_factory = sqlite3.Row
+        db = connect(self.path, timeout=10)  # PostgreSQL when DATABASE_URL is set
         db.execute("PRAGMA journal_mode=WAL")
         db.execute("PRAGMA foreign_keys=ON")
         return db

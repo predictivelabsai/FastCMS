@@ -1,4 +1,5 @@
 """Initialize database, create root page tree, and admin user."""
+import os
 import sys
 from app.db import (
     db, users, sites, collections, pages, setup_fts, now
@@ -8,11 +9,13 @@ from app.snippets import get_snippet_types  # triggers registration
 from app.settings import set_setting, DEFAULT_SETTINGS
 
 def setup():
+    from app.dbconn import is_postgres
     print("FastHTML-CMS Setup")
+    print("Database:", "PostgreSQL (DATABASE_URL)" if is_postgres() else "SQLite (" + __import__("app.db").db.DB_PATH + ")")
     print("=" * 40)
 
     setup_fts()
-    print("✓ FTS5 search index created")
+    print("✓ Search index created (FTS5 on SQLite, table + ILIKE on PostgreSQL)")
 
     if not collections():
         collections.insert(name='Root', path='0001', depth=1, parent_id=0)
@@ -45,9 +48,19 @@ def setup():
     print("✓ Default settings initialized")
 
     if not users():
-        email = input("Admin email [admin@example.com]: ").strip() or "admin@example.com"
-        password = input("Admin password [admin]: ").strip() or "admin"
-        name = input("Admin name [Admin]: ").strip() or "Admin"
+        env_email = os.getenv("FASTCMS_ADMIN_EMAIL", "").strip()
+        env_password = os.getenv("FASTCMS_ADMIN_PASSWORD", "")
+        if env_email and env_password:
+            email, password = env_email, env_password
+            name = os.getenv("FASTCMS_ADMIN_NAME", "Admin")
+        elif not sys.stdin.isatty():
+            print("! No users yet; set FASTCMS_ADMIN_EMAIL/FASTCMS_ADMIN_PASSWORD to create one non-interactively")
+            print("Setup complete.")
+            return
+        else:
+            email = input("Admin email [admin@example.com]: ").strip() or "admin@example.com"
+            password = input("Admin password [admin]: ").strip() or "admin"
+            name = input("Admin name [Admin]: ").strip() or "Admin"
         users.insert(
             email=email, name=name, password_hash=hash_password(password),
             role='admin', is_active=True, created_at=now()
